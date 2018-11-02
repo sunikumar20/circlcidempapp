@@ -1,0 +1,62 @@
+versions: 2
+jobs:
+  build:
+    working_directory: ~/tmp
+    docker:
+      - image: circleci/ruby:2.3.7-node-browsers
+      - image: circleci/mysql:5.6-ram
+      environment:
+        MYSQL_USER: root
+        MYSQL_ALLOW_EMPTY_PASSWORD: true
+      steps:
+        - checkout
+        -  run: |
+          sudo apt-get update; \
+          sudo apt-get install libicu57 build-essential \
+                       libgl1-mesa-dev qt5-default \
+                       libqt5webkit5 \
+                       gcc g++ make \
+                       zlib1g-dev \
+                       libqt5webkit5-dev \
+                       gstreamer1.0-plugins-base gstreamer1.0-tools gstreamer1.0-x \
+                       mysql-client
+        # This is based on your 1.0 configuration file or project settings
+        - run:
+            name: Install Elastic Search
+            command: |
+              if [[ ! -e elasticsearch-2.3.5 ]]
+              then
+                  wget https://download.elastic.co/elasticsearch/release/org/elasticsearch/distribution/tar/elasticsearch/2.3.5/elasticsearch-2.3.5.tar.gz
+                  tar -xvf elasticsearch-2.3.5.tar.gz
+              fi
+        - run:
+            name: Run Elastic Search
+            command: elasticsearch-2.3.5/bin/elasticsearch
+            background: true
+        - run:
+            name: Sleep to allow Elastic Search to start
+            command: sleep 15
+        - run: npm install
+        - run: gem install bundler
+        - run: |-
+          mkdir -p config && echo 'test:
+            database: circle_ruby_test
+            adapter: mysql2
+            encoding: utf8mb4
+            collation: utf8mb4_unicode_ci
+            reconnect: false
+            pool: 5
+            username: root
+            host: localhost
+            socket: /var/run/mysqld/mysqld.sock
+          ' > config/database.yml
+        - run:
+            command: bundle exec rake db:create db:structure:load --trace
+            environment:
+              RAILS_ENV: test
+              RACK_ENV: test
+        - run:
+            command: bundle exec rspec --color --format documentation --require spec_helper --require rails_helper --format progress spec
+            environment:
+              RAILS_ENV: test
+              RACK_ENV: test
